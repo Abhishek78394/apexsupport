@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Organization } from '../../organization/entities/organization.entity';
 import { User } from '../../user/entities/user.entity';
+import { ChatbotConfig } from '../../chatbot/entities/chatbot-config.entity';
 
 export enum ConversationStatus {
   OPEN = 'Open',
@@ -20,6 +21,14 @@ export class Conversation {
   @ManyToOne(() => Organization, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'organizationId' })
   organization: Organization;
+
+  @Index()
+  @Column({ type: 'uuid' })
+  chatbotId: string;
+
+  @ManyToOne(() => ChatbotConfig, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'chatbotId' })
+  chatbot: ChatbotConfig;
 
   @Index()
   @Column({ type: 'uuid', nullable: true })
