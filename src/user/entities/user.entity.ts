@@ -1,5 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Index } from 'typeorm';
-import { Organization } from '../../organization/entities/organization.entity';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument } from 'mongoose';
 
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
@@ -13,52 +13,45 @@ export enum UserStatus {
   DEACTIVATED = 'Deactivated',
 }
 
-@Entity('users')
+export type UserDocument = HydratedDocument<User>;
+
+@Schema({ timestamps: true, collection: 'users' })
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 
-  @Column({ length: 255, nullable: true })
-  fullName: string;
+  @Prop({ maxlength: 255 })
+  fullName?: string;
 
-  @Index({ unique: true })
-  @Column({ length: 255 })
+  @Prop({ required: true, unique: true, maxlength: 255 })
   email: string;
 
-  @Column({ length: 50, nullable: true })
-  phone: string;
+  @Prop({ maxlength: 50 })
+  phone?: string;
 
-  @Column({ select: false, nullable: true })
-  passwordHash: string;
+  @Prop({ select: false })
+  passwordHash?: string;
 
-  @Index()
-  @Column({ type: 'enum', enum: UserRole, default: UserRole.TENANT })
+  @Prop({ type: String, enum: UserRole, default: UserRole.TENANT })
   role: UserRole;
 
-  @Column({ type: 'jsonb', nullable: true })
-  permissions: string[];
+  @Prop({ type: [String], default: [] })
+  permissions?: string[];
 
-  @Index()
-  @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
+  @Prop({ type: String, enum: UserStatus, default: UserStatus.ACTIVE })
   status: UserStatus;
 
-  // Forgot password OTP
-  @Column({ select: false, nullable: true })
-  otp: string;
+  @Prop({ select: false })
+  otp?: string;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  otpExpiresAt: Date;
+  @Prop()
+  otpExpiresAt?: Date;
 
-  // Password reset token
-  @Column({ select: false, nullable: true })
-  resetToken: string;
-
-  @OneToMany(() => Organization, (org) => org.owner, { cascade: true })
-  organizations: Organization[];
-
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  @Prop({ select: false })
+  resetToken?: string;
 }
+
+export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.index({ role: 1 });
+UserSchema.index({ status: 1 });

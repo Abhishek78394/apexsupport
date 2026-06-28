@@ -1,7 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
-import { Organization } from '../../organization/entities/organization.entity';
-import { User } from '../../user/entities/user.entity';
-import { ChatbotConfig } from '../../chatbot/entities/chatbot-config.entity';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument } from 'mongoose';
 
 export enum ConversationStatus {
   OPEN = 'Open',
@@ -9,45 +7,27 @@ export enum ConversationStatus {
   ESCALATED = 'Escalated',
 }
 
-@Entity('conversations')
-export class Conversation {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export type ConversationDocument = HydratedDocument<Conversation>;
 
-  @Index()
-  @Column({ type: 'uuid' })
+@Schema({ timestamps: true, collection: 'conversations' })
+export class Conversation {
+  createdAt?: Date;
+  updatedAt?: Date;
+
+  @Prop({ type: String, ref: 'Organization', required: true, index: true })
   organizationId: string;
 
-  @ManyToOne(() => Organization, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'organizationId' })
-  organization: Organization;
-
-  @Index()
-  @Column({ type: 'uuid' })
+  @Prop({ type: String, ref: 'ChatbotConfig', required: true, index: true })
   chatbotId: string;
 
-  @ManyToOne(() => ChatbotConfig, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'chatbotId' })
-  chatbot: ChatbotConfig;
+  @Prop({ type: String, ref: 'User', index: true })
+  assignedAgentId?: string;
 
-  @Index()
-  @Column({ type: 'uuid', nullable: true })
-  assignedAgentId: string;
-
-  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'assignedAgentId' })
-  assignedAgent: User;
-
-  @Index()
-  @Column({ type: 'enum', enum: ConversationStatus, default: ConversationStatus.OPEN })
+  @Prop({ type: String, enum: ConversationStatus, default: ConversationStatus.OPEN, index: true })
   status: ConversationStatus;
 
-  @Column({ type: 'jsonb', nullable: true })
-  metadata: Record<string, unknown>;
-
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  @Prop({ type: Object })
+  metadata?: Record<string, unknown>;
 }
+
+export const ConversationSchema = SchemaFactory.createForClass(Conversation);

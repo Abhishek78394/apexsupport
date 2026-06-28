@@ -1,11 +1,11 @@
-import { Injectable, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import * as nodemailer from 'nodemailer';
-import { User, UserRole, UserStatus } from '../user/entities/user.entity';
+import { User, UserDocument, UserRole, UserStatus } from '../user/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
@@ -14,69 +14,64 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
     private readonly jwtService: JwtService,
   ) {}
 
   async superAdminLogin(loginDto: LoginDto) {
-    // Hardcoded Super Admin for local development/first-time setup
     if (loginDto.email === 'admin@apex.com' && loginDto.password === 'admin123') {
       const payload = { sub: 'super-admin-id', email: 'admin@apex.com', role: UserRole.SUPER_ADMIN };
       return { access_token: this.jwtService.sign(payload, { expiresIn: '30m' }) };
     }
 
-    const user = await this.userRepository.findOne({ 
-      where: { email: loginDto.email, role: UserRole.SUPER_ADMIN },
-      select: { id: true, email: true, passwordHash: true, role: true }
-    });
+    const user = await this.userModel
+      .findOne({ email: loginDto.email, role: UserRole.SUPER_ADMIN })
+      .select('+passwordHash')
+      .exec();
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
-    const isMatch = user.passwordHash && await bcrypt.compare(loginDto.password, user.passwordHash);
+    const isMatch = user.passwordHash && (await bcrypt.compare(loginDto.password, user.passwordHash));
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
-    // 30 mins token for super admin
     const payload = { sub: user.id, email: user.email, role: user.role };
     return { access_token: this.jwtService.sign(payload, { expiresIn: '30m' }) };
   }
 
   async tenantLogin(loginDto: LoginDto) {
-    const user = await this.userRepository.findOne({ 
-      where: { email: loginDto.email },
-      select: { id: true, email: true, passwordHash: true, role: true, status: true }
-    });
+    const user = await this.userModel
+      .findOne({ email: loginDto.email })
+      .select('+passwordHash')
+      .exec();
 
     if (!user || user.status !== UserStatus.ACTIVE) throw new UnauthorizedException('Invalid credentials');
 
-    const isMatch = await bcrypt.compare(loginDto.password, user.passwordHash);
+    const isMatch = await bcrypt.compare(loginDto.password, user.passwordHash!);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
-    // 7 days token for tenant
     const payload = { sub: user.id, email: user.email, role: user.role };
     return { access_token: this.jwtService.sign(payload, { expiresIn: '7d' }) };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
-    const user = await this.userRepository.findOne({ where: { email: dto.email } });
+    const user = await this.userModel.findOne({ email: dto.email }).exec();
     if (!user) {
-      // Return success anyway to prevent email enumeration
       return { message: 'If that email exists, an OTP has been sent.' };
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date();
     expires.setMinutes(expires.getMinutes() + 10);
 
     user.otp = otp;
     user.otpExpiresAt = expires;
-    await this.userRepository.save(user);
+    await user.save();
 
-    // Send real email via nodemailer
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
-      secure: false, // true for 465, false for other ports
+      secure: false,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -148,37 +143,37 @@ export class AuthService {
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
-    const user = await this.userRepository.findOne({ 
-      where: { email: dto.email },
-      select: { id: true, otp: true, otpExpiresAt: true } 
-    });
+    const user = await this.userModel
+      .findOne({ email: dto.email })
+      .select('+otp +otpExpiresAt')
+      .exec();
 
-    if (!user || user.otp !== dto.otp || new Date() > user.otpExpiresAt) {
+    if (!user || user.otp !== dto.otp || !user.otpExpiresAt || new Date() > user.otpExpiresAt) {
       throw new BadRequestException('Invalid or expired OTP');
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    user.otp = null as any;
-    user.otpExpiresAt = null as any;
+    user.otp = undefined;
+    user.otpExpiresAt = undefined;
     user.resetToken = resetToken;
-    await this.userRepository.save(user);
+    await user.save();
 
     return { resetToken, message: 'OTP verified. Use this token to reset your password within 10 minutes.' };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
-    const user = await this.userRepository.findOne({ 
-      where: { resetToken: dto.resetToken },
-      select: { id: true, resetToken: true } 
-    });
+    const user = await this.userModel
+      .findOne({ resetToken: dto.resetToken })
+      .select('+resetToken +passwordHash')
+      .exec();
 
     if (!user) throw new BadRequestException('Invalid reset token');
 
     const salt = await bcrypt.genSalt();
     user.passwordHash = await bcrypt.hash(dto.newPassword, salt);
-    user.resetToken = null as any;
-    
-    await this.userRepository.save(user);
+    user.resetToken = undefined;
+
+    await user.save();
 
     return { message: 'Password has been successfully reset.' };
   }

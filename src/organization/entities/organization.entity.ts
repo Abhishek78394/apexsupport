@@ -1,6 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
-import { User } from '../../user/entities/user.entity';
-import { ChatbotConfig } from '../../chatbot/entities/chatbot-config.entity';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument } from 'mongoose';
+
 export enum IndustryType {
   ECOMMERCE = 'Ecommerce',
   HEALTHCARE = 'Healthcare',
@@ -9,45 +9,35 @@ export enum IndustryType {
   OTHER = 'Other',
 }
 
-@Entity('organizations')
-export class Organization {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export type OrganizationDocument = HydratedDocument<Organization>;
 
-  @Index()
-  @Column({ length: 100 })
+@Schema({ timestamps: true, collection: 'organizations' })
+export class Organization {
+  createdAt?: Date;
+  updatedAt?: Date;
+
+  @Prop({ required: true, maxlength: 100 })
   name: string;
 
-  @Index({ unique: true })
-  @Column({ length: 100 })
+  @Prop({ required: true, unique: true, maxlength: 100 })
   slug: string;
 
-  @Column({ type: 'enum', enum: IndustryType, default: IndustryType.OTHER })
+  @Prop({ type: String, enum: IndustryType, default: IndustryType.OTHER })
   industry: IndustryType;
 
-  @Column({ nullable: true })
-  companySize: string;
+  @Prop()
+  companySize?: string;
 
-  @Column({ nullable: true })
-  websiteUrl: string;
+  @Prop()
+  websiteUrl?: string;
 
-  @Column({ type: 'text', nullable: true })
-  address: string;
+  @Prop()
+  address?: string;
 
-  @ManyToOne(() => User, (user) => user.organizations, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'ownerId' })
-  owner: User;
-
-  @Index()
-  @Column({ type: 'uuid' })
+  @Prop({ type: String, ref: 'User', required: true, index: true })
   ownerId: string;
-
-  @OneToMany(() => ChatbotConfig, (agent) => agent.organization, { cascade: true })
-  agents: ChatbotConfig[];
-
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
 }
+
+export const OrganizationSchema = SchemaFactory.createForClass(Organization);
+
+OrganizationSchema.index({ name: 1 });

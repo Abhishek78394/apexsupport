@@ -1,13 +1,18 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { MongooseModule } from '@nestjs/mongoose';
 import { ChatbotService } from './chatbot.service';
 import { ChatbotController } from './chatbot.controller';
-import { ChatbotConfig } from './entities/chatbot-config.entity';
-import { Conversation } from '../conversation/entities/conversation.entity';
+import { ChatbotConfig, ChatbotConfigSchema } from './entities/chatbot-config.entity';
+import { Conversation, ConversationSchema } from '../conversation/entities/conversation.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ChatbotConfig, Conversation])],
+  imports: [
+    MongooseModule.forFeature([
+      { name: ChatbotConfig.name, schema: ChatbotConfigSchema },
+      { name: Conversation.name, schema: ConversationSchema },
+    ]),
+  ],
   providers: [ChatbotService],
-  controllers: [ChatbotController]
+  controllers: [ChatbotController],
 })
 export class ChatbotModule {}

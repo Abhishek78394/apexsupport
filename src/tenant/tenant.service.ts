@@ -1,32 +1,32 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import * as nodemailer from 'nodemailer';
-import { User, UserRole, UserStatus } from '../user/entities/user.entity';
-import { Organization } from '../organization/entities/organization.entity';
+import { User, UserDocument, UserRole, UserStatus } from '../user/entities/user.entity';
+import { Organization, OrganizationDocument } from '../organization/entities/organization.entity';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
 
 @Injectable()
 export class TenantService {
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(Organization)
-    private readonly orgRepository: Repository<Organization>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+    @InjectModel(Organization.name)
+    private readonly orgModel: Model<OrganizationDocument>,
   ) {}
 
   async register(dto: RegisterTenantDto, isAdminCreated: boolean = false) {
-    const existingUser = await this.userRepository.findOne({ where: { email: dto.email } });
+    const existingUser = await this.userModel.findOne({ email: dto.email }).exec();
     if (existingUser) throw new BadRequestException('Email already in use');
 
-    const existingOrg = await this.orgRepository.findOne({ where: { slug: dto.orgSlug } });
+    const existingOrg = await this.orgModel.findOne({ slug: dto.orgSlug }).exec();
     if (existingOrg) throw new BadRequestException('Organization slug already in use');
 
     const salt = await bcrypt.genSalt();
     const passwordHash = await bcrypt.hash(dto.password, salt);
 
-    const user = this.userRepository.create({
+    const savedUser = await this.userModel.create({
       fullName: dto.fullName,
       email: dto.email,
       phone: dto.phone,
@@ -35,9 +35,7 @@ export class TenantService {
       status: UserStatus.ACTIVE,
     });
 
-    const savedUser = await this.userRepository.save(user);
-
-    const org = this.orgRepository.create({
+    const org = await this.orgModel.create({
       name: dto.orgName,
       slug: dto.orgSlug,
       industry: dto.industry,
@@ -46,9 +44,6 @@ export class TenantService {
       ownerId: savedUser.id,
     });
 
-    await this.orgRepository.save(org);
-
-    // Send Welcome Email
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
@@ -134,38 +129,60 @@ export class TenantService {
     return { message: 'Tenant and Organization created successfully', tenantId: savedUser.id, orgId: org.id };
   }
 
-  async updateTenant(id: string, updateData: any) {
-    const user = await this.userRepository.findOne({ where: { id } });
+  async updateTenant(id: string, updateData: Record<string, unknown>) {
+    const user = await this.userModel.findById(id).exec();
     if (!user) throw new NotFoundException('Tenant not found');
-    
+
     Object.assign(user, updateData);
-    return this.userRepository.save(user);
+    return user.save();
   }
 
   async suspendTenant(id: string) {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userModel.findById(id).exec();
     if (!user) throw new NotFoundException('Tenant not found');
 
     user.status = UserStatus.SUSPENDED;
-    await this.userRepository.save(user);
+    await user.save();
     return { message: 'Tenant suspended successfully' };
   }
 
   async findAll() {
-    return this.userRepository.find({
-      where: { role: UserRole.TENANT },
-      relations: { organizations: true },
-      select: { id: true, fullName: true, email: true, phone: true, status: true, createdAt: true },
-    });
+    const users = await this.userModel
+      .find({ role: UserRole.TENANT })
+      .select('fullName email phone status createdAt')
+      .exec();
+
+    return Promise.all(
+      users.map(async (user) => ({
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        status: user.status,
+        createdAt: user.createdAt,
+        organizations: await this.orgModel.find({ ownerId: user.id }).exec(),
+      })),
+    );
   }
 
   async findOne(id: string) {
-    const user = await this.userRepository.findOne({
-      where: { id, role: UserRole.TENANT },
-      relations: { organizations: true },
-      select: { id: true, fullName: true, email: true, phone: true, status: true, createdAt: true },
-    });
+    const user = await this.userModel
+      .findOne({ _id: id, role: UserRole.TENANT })
+      .select('fullName email phone status createdAt')
+      .exec();
+
     if (!user) throw new NotFoundException('Tenant not found');
-    return user;
+
+    const organizations = await this.orgModel.find({ ownerId: user.id }).exec();
+
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      status: user.status,
+      createdAt: user.createdAt,
+      organizations,
+    };
   }
 }

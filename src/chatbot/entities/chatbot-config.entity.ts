@@ -1,6 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
-import { Organization } from '../../organization/entities/organization.entity';
-import { Conversation } from '../../conversation/entities/conversation.entity';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument } from 'mongoose';
 
 export enum BotPersonality {
   FRIENDLY = 'Friendly',
@@ -13,49 +12,39 @@ export enum AgentType {
   VOICE_AGENT = 'Voice Agent',
 }
 
-@Entity('chatbot_configs')
-export class ChatbotConfig {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export type ChatbotConfigDocument = HydratedDocument<ChatbotConfig>;
 
-  @Index()
-  @Column({ type: 'uuid' })
+@Schema({ timestamps: true, collection: 'chatbot_configs' })
+export class ChatbotConfig {
+  createdAt?: Date;
+  updatedAt?: Date;
+
+  @Prop({ type: String, ref: 'Organization', required: true, index: true })
   organizationId: string;
 
-  @ManyToOne(() => Organization, (org) => org.agents, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'organizationId' })
-  organization: Organization;
-
-  @Column({ type: 'enum', enum: AgentType, default: AgentType.TEXT_CHATBOT })
+  @Prop({ type: String, enum: AgentType, default: AgentType.TEXT_CHATBOT })
   agentType: AgentType;
 
-  @OneToMany(() => Conversation, (conv) => conv.chatbot, { cascade: true })
-  conversations: Conversation[];
-
-  @Column({ length: 100 })
+  @Prop({ required: true, maxlength: 100 })
   name: string;
 
-  @Column({ type: 'enum', enum: BotPersonality, default: BotPersonality.PROFESSIONAL })
+  @Prop({ type: String, enum: BotPersonality, default: BotPersonality.PROFESSIONAL })
   personality: BotPersonality;
 
-  @Column({ nullable: true })
-  logoUrl: string;
+  @Prop()
+  logoUrl?: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  businessHours: Record<string, any>;
+  @Prop({ type: Object })
+  businessHours?: Record<string, unknown>;
 
-  @Column({ type: 'text', nullable: true })
-  systemKnowledge: string;
+  @Prop()
+  systemKnowledge?: string;
 
-  @Column({ nullable: true })
-  webhookUrl: string;
+  @Prop()
+  webhookUrl?: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  allowedActions: Record<string, any>[];
-
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  @Prop({ type: [Object], default: [] })
+  allowedActions?: Record<string, unknown>[];
 }
+
+export const ChatbotConfigSchema = SchemaFactory.createForClass(ChatbotConfig);

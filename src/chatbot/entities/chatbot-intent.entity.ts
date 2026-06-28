@@ -1,32 +1,23 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
-import { Organization } from '../../organization/entities/organization.entity';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument } from 'mongoose';
 
-@Entity('chatbot_intents')
-@Index(['organizationId', 'name'], { unique: true })
+export type ChatbotIntentDocument = HydratedDocument<ChatbotIntent>;
+
+@Schema({ timestamps: true, collection: 'chatbot_intents' })
 export class ChatbotIntent {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column({ length: 100 })
+  @Prop({ required: true, maxlength: 100 })
   name: string;
 
-  @Column({ type: 'text', array: true, nullable: true })
-  trainingPhrases: string[];
+  @Prop({ type: [String], default: [] })
+  trainingPhrases?: string[];
 
-  @Column({ type: 'jsonb', nullable: true })
-  responseTemplate: Record<string, unknown>;
+  @Prop({ type: Object })
+  responseTemplate?: Record<string, unknown>;
 
-  @Index()
-  @Column({ type: 'uuid' })
+  @Prop({ type: String, ref: 'Organization', required: true, index: true })
   organizationId: string;
-
-  @ManyToOne(() => Organization, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'organizationId' })
-  organization: Organization;
-
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
 }
+
+export const ChatbotIntentSchema = SchemaFactory.createForClass(ChatbotIntent);
+
+ChatbotIntentSchema.index({ organizationId: 1, name: 1 }, { unique: true });
